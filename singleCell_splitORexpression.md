@@ -234,6 +234,20 @@ or.names[,1][order(or.names[,1])]
 ##      "Olfr975"      "Olfr987"        "Taar4"
 ```
 
+And the OR gene tends to be one of the most abundant genes expressed in the cell, usually within the top five most highly expressed genes (29 of the 33 cells).
+
+
+```r
+dataNorm <- logcounts(sce)
+
+ranks <- sapply(1:nrow(or.expr), function(x) which(dataNorm[order(dataNorm[,x], decreasing = TRUE),x] == or.expr[x,1]))
+
+ggplot(as.data.frame(ranks), aes(1:length(ranks), ranks)) + geom_point() + xlab("OSNs") + ylab("OR rank in transcriptome") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + geom_hline(yintercept = 5, lty=2, col="grey")
+```
+
+![](singleCell_splitORexpression_files/figure-html/ORrank-1.png)<!-- -->
+
+
 And all but one show clear monogenic expression, with the second highest OR gene expressed at least a hundred times less than the top OR gene.
 
 
