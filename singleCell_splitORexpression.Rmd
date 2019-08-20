@@ -1,0 +1,241 @@
+---
+title: "Single-cell RNA-seq of OSNs"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    keep_md: true
+    fig_width: 5
+    fig_height: 5
+    code_folding: hide
+    toc: true
+    toc_float: 
+      collapsed: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(scran)
+library(scater)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+
+# dir <- "/Users/ibarra01/OneDrive - CRUK Cambridge Institute/ENSEMBL/singleCell/Khan/"
+dir <- "/Users/ibarra01/OneDrive/OneDrive - Cancer Research UK, Cambridge Institute/ENSEMBL/singleCell/Khan/"
+
+th <- theme_bw() + theme(axis.text.x = element_text(size=10), axis.title.x = element_text(size=12), axis.text.y = element_text(size=10), axis.title.y = element_text(size=12), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"), panel.border = element_blank(), plot.title = element_text(face="bold", hjust = 0.5, size=10))
+```
+
+Single-cell RNA-seq data from 34 single OSNs picked by hand from a GFP-OMP mouse, postnatal day 3. Cells that looked healthy and with high GFP expression were selected and processed further to produce libraries for single-cell RNA-seq.
+
+Sequencing reads were mapped to the mouse genome `mm10` using `STAR version 2.6.0c` with gene quantification enabled, using `Ensembl version 93` annotation.
+
+The counts from each sample were compiled into a combined count matrix with the script `readGeneCounts.R`. These can be downloaded from: ``
+
+------
+
+Here, we analyse the data with the purpose of finding OSNs that express split OR genes, that is, OR genes that encode a predicted functional protein across two exons.
+
+First, we load the count matrix and mapping statistics (parsed from the STAR `Log.final.out` files). We also separate the statistics reported by `STAR` from the gene counts. We have data for 34 cells, across the whole transcriptome.
+
+```{r data}
+ann <- read.table(paste0(dir, "geneAnnotation.Ensembl_v93.tsv"), stringsAsFactors = FALSE)
+
+data <- read.table(paste0(dir, "geneCounts_P3OMPcells.RAW.tsv"), stringsAsFactors = FALSE)
+mapping.stats <- read.table(paste0(dir, "mappingStats.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
+
+counting.stats <- as.data.frame(t(data[1:4,-c(1:2)]))
+data <- data[-c(1:4),]
+dim(data[,-c(1:2)])
+```
+
+### Quality-control
+
+Before analysing the data itself we need to check the quality of each library and remove any that are not good enough. Since the cells were hand picked and selected to be healthy looking cells we expect that most libraries will be of good quality.
+
+To assess quality we check the general mapping statistics, the proportion of reads in mitochondrial reads and total number of detected genes per cell.
+
+Samples were sequenced to a median depth of ~3 million fragments. The distribution of library sizes is quite uniform, with no obvious outliers.
+
+```{r libSize, message=FALSE, fig.width=3, fig.height=3}
+counting.stats <- cbind(counting.stats, colSums(data[,-c(1:2)]))
+colnames(counting.stats)[5] <- "N_inExons"
+
+ggplot(mapping.stats, aes(1, total/1e6)) + geom_violin() + geom_boxplot(width=0.1, col="grey") + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5, fill="darkgrey") + ylab("total fragments (millions)") + xlab("") + th + theme(axis.title.x = element_blank(), axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+Overall, the mapping statistics for all libraries are quite uniform. There is one outlier each in the proportion of unmapped and multimapped fragments, and four libraries with a higher fraction of reads mapping outside annotated exons. However, the samples showing outlying behaviour in the different metrics are all different, with no individual sample showing erratic metrics in two or more categories. Bad quality samples usually fail QC thresholds in most categories.
+
+```{r mapping, message=FALSE, fig.width=7, fig.height=6}
+mapping.stats$unmapped <- mapping.stats$total-(mapping.stats$unique+mapping.stats$multimapped)
+
+stopifnot(identical(row.names(mapping.stats), row.names(counting.stats)))
+
+plots <- list()
+plots[[1]] <- ggplot(mapping.stats, aes(1, unmapped/total*100)) + geom_violin(trim=FALSE) + geom_jitter(aes(1,unmapped/total*100, col=mapping.stats$total/1e6), width = 0.01) + ylab("% unmapped") + scale_colour_gradientn(colours = (brewer.pal(n = 9, name = "Blues")[-1])) + labs(colour="libsize") + xlab("") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + geom_hline(yintercept = 5, lty=2, col="darkgrey")
+
+plots[[2]] <- ggplot(mapping.stats, aes(1, multimapped/total*100)) + geom_violin(trim=FALSE) + geom_jitter(aes(1,multimapped/total*100, col=mapping.stats$total/1e6), width = 0.01) + ylab("% multimapped") + scale_colour_gradientn(colours = (brewer.pal(n = 9, name = "Blues")[-1])) + labs(colour="libsize") + xlab("") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + geom_hline(yintercept = 4.5, lty=2, col="darkgrey")
+
+plots[[3]] <- ggplot(counting.stats, aes(1, N_noFeature/mapping.stats$total*100)) + geom_violin(trim=FALSE) + geom_jitter(aes(1,N_noFeature/mapping.stats$total*100, col=mapping.stats$total/1e6), width = 0.01) + ylab("% outside exons") + scale_colour_gradientn(colours = (brewer.pal(n = 9, name = "Blues")[-1])) + labs(colour="libsize") + xlab("") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + geom_hline(yintercept = 10, lty=2, col="darkgrey")
+
+plots[[4]] <- ggplot(counting.stats, aes(1, N_ambiguous/mapping.stats$total*100)) + geom_violin(trim=FALSE) + geom_jitter(aes(1,N_ambiguous/mapping.stats$total*100, col=mapping.stats$total/1e6), width = 0.01) + ylab("% ambiguous") + scale_colour_gradientn(colours = (brewer.pal(n = 9, name = "Blues")[-1])) + labs(colour="libsize") + xlab("") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+ggarrange(plotlist = plots, ncol = 2, nrow = 2, common.legend = TRUE, legend = "right")
+```
+
+The proportion of fragments mapped to mitochondrial genes is very low for all samples. And in average, cells have around seven thousand genes detected; there is one outlier with only 3,164 detected genes.
+
+```{r mt, fig.width=7, fig.height=3}
+mt <- colSums(data[data$chr=="MT",-c(1:2)])
+nGenes <- apply(data[,-c(1:2)], 2, function(x) sum(x>0))
+
+plots <- list()
+plots[[1]] <- ggplot(mapping.stats, aes(1, mt/total*100)) + geom_violin(trim=FALSE) + geom_jitter(aes(1, mt/total*100, col=mapping.stats$total/1e6), width = 0.01) + ylab("% mapped to MT genes") + scale_colour_gradientn(colours = (brewer.pal(n = 9, name = "Blues")[-1])) + labs(colour="libsize") + xlab("") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+plots[[2]] <- ggplot(mapping.stats, aes(1, nGenes)) + geom_violin(trim=FALSE) + geom_jitter(aes(1, nGenes, col=mapping.stats$total/1e6), width = 0.01) + ylab("total detected genes") + scale_colour_gradientn(colours = (brewer.pal(n = 9, name = "Blues")[-1])) + labs(colour="libsize") + xlab("") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + geom_hline(yintercept = 4e3, lty=2, col="darkgrey")
+
+ggarrange(plotlist = plots, ncol = 2, nrow = 1, common.legend = TRUE, legend = "right")
+```
+
+Overall, all samples are of good-quality. We will remove only the sample with low number of genes detected (which also has a small library size). We also remove all genes that are not expressed in any cell.
+
+```{r qc}
+bad.qual <- row.names(mapping.stats)[which.min(nGenes)]
+data <- data[,-which(colnames(data)==bad.qual)]
+data <- data[rowSums(data[,-c(1:2)])>0,]
+dim(data[,-c(1:2)])
+
+mapping.stats <- mapping.stats[-which(row.names(mapping.stats)==bad.qual),]
+counting.stats <- counting.stats[-which(row.names(counting.stats)==bad.qual),]
+```
+
+### Normalisation
+
+Next we normalise the data to remove composition biases between samples. We use the method implemented in `scran`. The calculated size factors are well correlated with the library sizes.
+
+```{r norm}
+## create object
+sce <- SingleCellExperiment(assays=list(counts=as.matrix(data[,-c(1:2)])))
+rowData(sce)$gene <- data$gene
+row.names(sce) <- uniquifyFeatureNames(row.names(assay(sce)), rowData(sce)$gene)
+
+## size factors
+sce <- computeSumFactors(sce, sizes=c(10,15,20))
+
+plot(colSums(assay(sce))/1e6, sizeFactors(sce), pch=16, bty="l", xlab="library size (million fragments)", ylab="size factor")
+abline(lm(sizeFactors(sce)~as.vector(colSums(assay(sce))/1e6)), col="red")
+
+## normalise
+sce <- normalize(sce)
+```
+
+### OR expression
+
+OSNs express one OR gene only, and silence all others. This rule is only violated when the OR chosen for expression is a pseudogene, in which case a different OR gene is expressed until a functional one is found. All but one of the 33 OSNs express a functional OR at high levels.
+
+```{r topORs, fig.height=4}
+ors <- logcounts(sce)
+ors <- ors[grep("Olfr", row.names(ors)),]
+
+or.expr <- matrix(ncol=5, nrow=ncol(ors))
+or.names <- or.expr
+or.class <- or.expr
+
+for(i in 1:ncol(ors)){
+  tmp <- ors[,i][order(ors[,i], decreasing = TRUE)]
+  or.expr[i,] <- tmp[1:5]
+  or.names[i,] <- names(tmp[1:5])
+  or.class[i,] <- ann[match(names(tmp[1:5]), ann$gene),]$biotype
+}
+n <- c("first", "second", "third", "fourth", "fifth")
+row.names(or.expr) <- colnames(ors); colnames(or.expr) <- n; or.expr <- as.data.frame(or.expr)
+row.names(or.names) <- colnames(ors); colnames(or.names) <- n;
+row.names(or.class) <- colnames(ors); colnames(or.class) <- n;
+
+ggplot(as.data.frame(or.expr), aes(1:nrow(or.expr), first, col=mapping.stats$total/1e6)) + geom_point(size=2.5) + xlab("single OSNs") + ylab("log2 normalised expression") + ggtitle("Highest expressed OR gene") + th + labs(col="libSize") + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+# median(or.expr$first) # 15.58
+# sd(or.expr$first) # 2.48
+```
+
+The one cell without abundant OR expression expresses instead a TAAR gene, a different class of receptor protein, also found in a small proportion of OSNs.
+
+```{r taars}
+other <- logcounts(sce)
+other <- other[grep("Taar|Vmn|Gucy2d", row.names(other)),]
+
+tmp <- other[,which(colnames(other) == row.names(or.expr)[which.min(or.expr$first)])]
+tmp[tmp>0]
+```
+
+So we add this gene as the receptor with highest expression for that cell.
+
+```{r addTAAR, fig.height=4}
+## add Taar4 to the or.expr data
+idx <- which.min(or.expr$first)
+or.expr[idx,][-1] <- or.expr[idx,][-5]
+or.expr[idx,][1] <- tmp[tmp>0]
+
+or.names[idx,][-1] <- or.names[idx,][-5]
+or.names[idx,][1] <- names(tmp[tmp>0])
+
+ggplot(as.data.frame(or.expr), aes(1:nrow(or.expr), first, col=mapping.stats$total/1e6, shape=ifelse(grepl("Taar", or.names[,1]), "TAAR", "OR"))) + geom_point(size=2.5) + xlab("single OSNs") + ylab("log2 normalised expression") + ggtitle("Highest expressed OR|TAAR gene") + th + labs(col="libSize", shape="") + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ylim(c(3,18))
+```
+
+All 33 cells express a different receptor gene.
+
+```{r genes}
+or.names[,1][order(or.names[,1])]
+```
+
+And all but one show clear monogenic expression, with the second highest OR gene expressed at least a hundred times less than the top OR gene.
+
+```{r secondOR, message=FALSE, fig.width=3, fig.height=4}
+or.expr <- 2^or.expr-1
+
+ggplot(as.data.frame(or.expr), aes(1, log10(or.expr$first/or.expr$second))) + geom_boxplot() + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5) + xlab("single OSNs") + ylab("first / second OR") + th + labs(col="exprFirstOR", shape="biotype") + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + scale_y_continuous(breaks = 1:5, labels = c(10,100,1000,1e4,1e5))
+```
+
+The exception is `r row.names(or.expr)[which.max(or.expr$second)]`:
+
+```{r cell33}
+rbind(or.names[which.max(or.expr$second),], or.expr[which.max(or.expr$second),])
+```
+
+*Olfr1195* and *Olfr1193* are adjacent genes. *Olfr1195* shows robust expression. Additional reads map uniquely to *Olfr1193*, including the coding sequence, but these do no support the annotated gene model. Instead, the data shows an additional isoform that spans both genes. Thus, it is likely that this cell expresses *Olfr1195* monogenically, and that some of its reads have been incorrectly assigned to *Olfr1195* due to lack of annotation of additional isoforms. Since the two genes are in opposite strands, strand-specific RNA-seq could resolve this issue.
+
+Most other cells have only tens of counts on the second most abundant OR gene. There are six cells with more than 45 counts from protein-coding genes, generally a few hundred. In four of the six, the second OR is adjacent to the top expressed gene. In most cases, the second receptor is a close paralogue of the top receptor. In these cases, the second OR gets a certain amount of reads multimapped to both receptors; these are not counted and thus the expression of the top receptor is underestimated. Often a small number of reads also map uniquely, but with several mismatches that are consistent across all reads, a sign of mismapping due to sequencing errors. Additionally, some of the UTRs are too short and thus reads from the top receptor spill over to the second receptor, just because of proximity. In all these cases, these estimates of hundreds of counts are spurious. Thus, after accounting for mapping and annotation inaccuracies, mongenic expression is strongly observed in all OSNs.
+
+Seven cells show expression of annotated pseudogenes, and in five of these, the pseudogene is the second most abundant OR locus expressed. Many are expressed at low levels (around 20 normalised counts) but three have several hundred normalised counts. Such expression levels, however, are still very low compared to the expression of the functional ORs, which have at least ~10,000 counts.
+
+### Split OR expression
+
+Within the 33 cells, two of them express abundantly OR genes that we identified as split OR genes, that is, intact open reading frames coded across two exons. Both of these OR genes -*Olfr718-ps1* and *Olfr766-ps1*- are expressed at similar levels to OR genes contained within a single exon.
+
+```{r split, message=FALSE, fig.width=3, fig.height=4}
+split <- unique(c("Olfr104-ps","Olfr104-ps","Olfr105-ps","Olfr106-ps","Olfr1116","Olfr1117-ps1","Olfr1118","Olfr1123","Olfr1174-ps","Olfr1175-ps","Olfr1177-ps","Olfr1183","Olfr1289","Olfr1291-ps1","Olfr1293-ps","Olfr1331","Olfr1333","Olfr1358","Olfr1480","Olfr239","OR5BS1P","Olfr286","Olfr287","Olfr288","Olfr324","Olfr324","Olfr55","Olfr560","Olfr592","Olfr607","Olfr680-ps1","Olfr682-ps1","Olfr718-ps1","Olfr735","Olfr745","Olfr764-ps1","Olfr766-ps1","Olfr844","Olfr857","Olfr869","Olfr872","Olfr873","Olfr873","Olfr18","Olfr94"))
+
+is.split <- rep("singleExon", nrow(or.expr))
+is.split[which(or.names[,1] %in% split)] <- "multiExon"
+
+ggplot(or.expr, aes(1, first/1e3)) + geom_boxplot() + geom_jitter(width = 0.03, aes(col=is.split)) + xlab("") + ylab("normalised counts x 1000") + labs(col="") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+And both are able to induce monogenic expression, since the second highest OR is expressed several hundred to several thousand times lower.
+
+```{r monogenic, message=FALSE, fig.width=4, fig.height=4}
+tmp <- data.frame(rank=rep(colnames(or.expr), each=nrow(or.expr)), expr=c(or.expr$first, or.expr$second, or.expr$third, or.expr$fourth, or.expr$fifth))
+tmp$rank <- factor(tmp$rank, levels=colnames(or.expr)) # relevel
+
+is.pseudo <- c(or.class[,1], or.class[,2], or.class[,3], or.class[,4], or.class[,5])
+is.pseudo <- ifelse(is.pseudo == "protein_coding", "protein_coding", "pseudogene")
+
+ggplot(tmp, aes(rank, log10(expr))) + geom_boxplot() + geom_jitter(width=0.05, aes(shape=is.pseudo, col=rep(is.split,5))) + labs(col="", shape="") + xlab("") + ylab("log10 normalised counts") + th
+```
+
+These data suggest that the split OR genes encode functional receptors that behave in the same way as those encoded within a single exon.
+
+
+```{r info}
+sessionInfo()
+```
+
