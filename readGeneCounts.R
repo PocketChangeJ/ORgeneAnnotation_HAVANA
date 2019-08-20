@@ -17,14 +17,15 @@ stopifnot(identical(row.names(ann), data$V1[-c(1:4)]))
 row.names(data) <- data$V1
 data$V1 <- NULL
 data$gene <- ann[match(row.names(data), row.names(ann)),1]
-data <- data[,2:1]
-colnames(data)[2] <- files[1]
+data$chr <- ann[match(row.names(data), row.names(ann)),2]
+data <- data[,c(2:3,1)]
+colnames(data)[3] <- files[1]
 
 ## read files for all other cells and append to count matrix
 for(f in files[-1]){
   data <- cbind(data, read.table(paste0(dir, "STAR/", f, "/ReadsPerGene.out.tab"), stringsAsFactors=FALSE)[,2])
 }
-colnames(data)[-1] <- files
+colnames(data)[-c(1:2)] <- files
 
 ## save
 write.table(data, paste0(dir, "geneCounts_P3OMPcells.RAW.tsv"), quote=FALSE, sep="\t")
