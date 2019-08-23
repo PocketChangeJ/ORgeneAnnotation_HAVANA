@@ -18,10 +18,12 @@ library(scran)
 library(scater)
 library(ggplot2)
 library(ggpubr)
+library(ggrepel)
 library(RColorBrewer)
+library(gplots)
 
 # dir <- "/Users/ibarra01/OneDrive - CRUK Cambridge Institute/ENSEMBL/singleCell/Khan/"
-dir <- "/Users/ibarra01/OneDrive/OneDrive - Cancer Research UK, Cambridge Institute/ENSEMBL/singleCell/Khan/"
+dir <- "/Users/ibarra01/OneDrive/OneDrive - Cancer Research UK, Cambridge Institute/github/ORgeneAnnotation_HAVANA/"
 
 th <- theme_bw() + theme(axis.text.x = element_text(size=10), axis.title.x = element_text(size=12), axis.text.y = element_text(size=10), axis.title.y = element_text(size=12), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"), panel.border = element_blank(), plot.title = element_text(face="bold", hjust = 0.5, size=10))
 ```
@@ -39,10 +41,10 @@ Here, we analyse the data with the purpose of finding OSNs that express split OR
 First, we load the count matrix and mapping statistics (parsed from the STAR `Log.final.out` files). We also separate the statistics reported by `STAR` from the gene counts. We have data for 34 cells, across the whole transcriptome.
 
 ```{r data}
-ann <- read.table(paste0(dir, "geneAnnotation.Ensembl_v93.tsv"), stringsAsFactors = FALSE)
+ann <- read.table(paste0(dir, "data/geneAnnotation.Ensembl_v93.tsv"), stringsAsFactors = FALSE)
 
-data <- read.table(paste0(dir, "geneCounts_P3OMPcells.RAW.tsv"), stringsAsFactors = FALSE)
-mapping.stats <- read.table(paste0(dir, "mappingStats.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
+data <- read.table(paste0(dir, "data/geneCounts_P3OMPcells.RAW.tsv"), stringsAsFactors = FALSE)
+mapping.stats <- read.table(paste0(dir, "data/mappingStats.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
 
 counting.stats <- as.data.frame(t(data[1:4,-c(1:2)]))
 data <- data[-c(1:4),]
@@ -157,7 +159,7 @@ ggplot(as.data.frame(or.expr), aes(1:nrow(or.expr), first, col=mapping.stats$tot
 # sd(or.expr$first) # 2.48
 ```
 
-The one cell without abundant OR expression expresses instead a TAAR gene, a different class of receptor protein, also found in a small proportion of OSNs.
+The one cell without abundant OR expression (`row.names(or.expr)[which.min(or.expr$first)]`) expresses instead a TAAR gene, a different class of receptor protein, also found in a small proportion of OSNs.
 
 ```{r taars}
 other <- logcounts(sce)
@@ -197,13 +199,58 @@ ranks <- sapply(1:nrow(or.expr), function(x) which(dataNorm[order(dataNorm[,x], 
 ggplot(as.data.frame(ranks), aes(1:length(ranks), ranks)) + geom_point() + xlab("OSNs") + ylab("OR rank in transcriptome") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + geom_hline(yintercept = 5, lty=2, col="grey")
 ```
 
+#### Index switching
 
-And all but one show clear monogenic expression, with the second highest OR gene expressed at least a hundred times less than the top OR gene.
+These cells were sequenced on the HiSeq X Ten platform, which suffers from index switching. This leads to some reads from a given library being incorrectly assigned to other libraries that share one of the indices used for multiplexing. Below is a heatmap of all the OR genes detected, and the coloured bar at the top indicates one of the indices used for multiplexing. It is clear that among the libraries sharing the same index there is index switching, i.e., a small number of reads from the very highly expressed OR gene from each cell bleeding into the others cells with the same index.
+
+```{r multiplexing, fig.width=5, fig.height=5}
+multiplexing <- read.table(paste0(dir, "data/indices.tsv"), header = TRUE, stringsAsFactors = FALSE)
+multiplexing <- multiplexing[match(colnames(ors), multiplexing$cell),]
+
+heatmap.2(as.matrix(log10(ors+1)), trace="none", col=rev(brewer.pal(n=10, "RdYlBu")), Colv = FALSE, ColSideColors = as.character(factor(multiplexing$index2, labels = rainbow(n=3))), dendrogram = "row", key.title = "", key.xlab = "log10 conts")
+```
+
+Thus, for all the most highly expressed OR genes per cell, we set the counts in other cells to zero.
+
+```{r clean_switching}
+## remove the counts of top expressed genes in other cells, since they are bleed through
+for(i in or.names[,1][-21]){
+  ors[i,-which.max(ors[i,])] <- 0
+}
+
+## recompute ranking
+or.expr <- matrix(ncol=5, nrow=ncol(ors))
+or.names <- or.expr
+or.class <- or.expr
+
+for(i in 1:ncol(ors)){
+  tmp <- ors[,i][order(ors[,i], decreasing = TRUE)]
+  or.expr[i,] <- tmp[1:5]
+  or.names[i,] <- names(tmp[1:5])
+  or.class[i,] <- ann[match(names(tmp[1:5]), ann$gene),]$biotype
+}
+n <- c("first", "second", "third", "fourth", "fifth")
+row.names(or.expr) <- colnames(ors); colnames(or.expr) <- n; or.expr <- as.data.frame(or.expr)
+row.names(or.names) <- colnames(ors); colnames(or.names) <- n;
+row.names(or.class) <- colnames(ors); colnames(or.class) <- n;
+
+## add Taar4 to the or.expr data
+tmp <- other[,which(colnames(other) == row.names(or.expr)[which.min(or.expr$first)])]
+or.expr[idx,][-1] <- or.expr[idx,][-5]
+or.expr[idx,][1] <- tmp[tmp>0]
+
+or.names[idx,][-1] <- or.names[idx,][-5]
+or.names[idx,][1] <- names(tmp[tmp>0])
+```
+
+#### Monogenic OR expression
+
+All but one cell show clear monogenic expression, with the second highest OR gene expressed at least a hundred times less than the top OR gene.
 
 ```{r secondOR, message=FALSE, fig.width=3, fig.height=4}
 or.expr <- 2^or.expr-1
 
-ggplot(as.data.frame(or.expr), aes(1, log10(or.expr$first/or.expr$second))) + geom_boxplot() + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5) + xlab("single OSNs") + ylab("first / second OR") + th + labs(col="exprFirstOR", shape="biotype") + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + scale_y_continuous(breaks = 1:5, labels = c(10,100,1000,1e4,1e5))
+ggplot(as.data.frame(or.expr), aes(1, log10(or.expr$first/(or.expr$second+1)))) + geom_boxplot() + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5) + xlab("single OSNs") + ylab("first / second OR") + th + labs(col="exprFirstOR", shape="biotype") + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + scale_y_continuous(breaks = 1:5, labels = c(10,100,1000,1e4,1e5))
 ```
 
 The exception is `r row.names(or.expr)[which.max(or.expr$second)]`:
@@ -212,11 +259,103 @@ The exception is `r row.names(or.expr)[which.max(or.expr$second)]`:
 rbind(or.names[which.max(or.expr$second),], or.expr[which.max(or.expr$second),])
 ```
 
-*Olfr1195* and *Olfr1193* are adjacent genes. *Olfr1195* shows robust expression. Additional reads map uniquely to *Olfr1193*, including the coding sequence, but these do no support the annotated gene model. Instead, the data shows an additional isoform that spans both genes. Thus, it is likely that this cell expresses *Olfr1195* monogenically, and that some of its reads have been incorrectly assigned to *Olfr1195* due to lack of annotation of additional isoforms. Since the two genes are in opposite strands, strand-specific RNA-seq could resolve this issue.
+*Olfr1195* and *Olfr1193* are adjacent genes, on opposite strands. *Olfr1195* shows robust expression. Additional reads map uniquely to *Olfr1193*, including the coding sequence, but these do no support the annotated gene model. Instead, the data shows an additional isoform that spans both genes. Thus, it is likely that this cell expresses *Olfr1195* monogenically, and that some of its reads have been incorrectly assigned to *Olfr1195* due to lack of annotation of additional isoforms. If indeed a new isoform covers both genes, and is transcribed from the reverse strand, then only OLFR1195 would be translated; the splice data supports this. 
 
-Most other cells have only tens of counts on the second most abundant OR gene. There are six cells with more than 45 counts from protein-coding genes, generally a few hundred. In four of the six, the second OR is adjacent to the top expressed gene. In most cases, the second receptor is a close paralogue of the top receptor. In these cases, the second OR gets a certain amount of reads multimapped to both receptors; these are not counted and thus the expression of the top receptor is underestimated. Often a small number of reads also map uniquely, but with several mismatches that are consistent across all reads, a sign of mismapping due to sequencing errors. Additionally, some of the UTRs are too short and thus reads from the top receptor spill over to the second receptor, just because of proximity. In all these cases, these estimates of hundreds of counts are spurious. Thus, after accounting for mapping and annotation inaccuracies, mongenic expression is strongly observed in all OSNs.
+![](pics/Olfr1195.png)
 
-Seven cells show expression of annotated pseudogenes, and in five of these, the pseudogene is the second most abundant OR locus expressed. Many are expressed at low levels (around 20 normalised counts) but three have several hundred normalised counts. Such expression levels, however, are still very low compared to the expression of the functional ORs, which have at least ~10,000 counts.
+Nonetheless, since the missing isoform does cover *Olfr1193* coding sequence, we cannot rule out that this gene is being expressed from the forward strand, and a second OR protein generated. 
+
+Most other cells have only tens of counts on the second most abundant OR gene. 
+
+```{r top2, message=FALSE, fig.width=4, fig.height=4}
+tmp <- data.frame(cell=rep(row.names(or.expr),2), rank=rep(colnames(or.expr)[1:2], each=nrow(or.expr)), expr=c(or.expr$first, or.expr$second))
+tmp$rank <- factor(tmp$rank, levels=colnames(or.expr)) # relevel
+
+is.pseudo <- c(or.class[,1], or.class[,2])
+is.pseudo <- ifelse(is.pseudo == "protein_coding", "protein_coding", "pseudogene")
+
+ggplot(tmp, aes(rank, log10(expr+1))) + geom_boxplot() + geom_jitter(width=0.05, aes(col=is.pseudo)) + labs(col="") + xlab("") + ylab("log10 normalised counts") + th #+ geom_text_repel(data = tmp[tmp$rank=="second" & tmp$expr > 30,], label=tmp[tmp$rank=="second" & tmp$expr > 30,]$cell, cex=2.5)
+```
+
+There are seven cells with more than 30 counts from protein-coding genes, generally a few hundred, except for P3OMP33 which we have already discussed.
+
+```{r topSecond}
+tmp <- or.expr[or.expr$second>45,]
+tmp[or.class[or.expr$second>45,2]=="protein_coding",1:2]
+```
+
+In five of the seven, the second OR is adjacent to the top expressed gene, and often these are paralogues with high identity. This is suggestive of mismapping from the top to the second OR. 
+
+```{r topSecond_names}
+tmp <- or.names[or.expr$second>45,]
+tmp <- as.data.frame(tmp[or.class[or.expr$second>45,2]=="protein_coding",1:2])
+tmp$adjacent <- c("yes", "yes", "skip1", "yes", "no", "yes", "yes")
+tmp$identity <- c(71.11,92.63,89.81,98.72,NA,88.85,57.14) # from Ensembl's paalogue data
+tmp
+```
+
+This is the case for P3OMP7, P3OMP11, P3OMP19 and P3OMP31, where the second OR gene has mostly multimapped reads (unique reads are coloured blue; multimapped in any other colour) and a few uniquely mapped ones, but with several mismatches that are supported by several reads.
+
+*Olfr1348*-*Olfr1347* in P3OMP7:
+
+![](pics/Olfr1348.png)
+
+*Olfr591*-*Olfr593* in P3OMP11:
+![](pics/Olfr591.png)
+
+*Olfr43*-*Olfr403* in P3OMP19:
+![](pics/Olfr43.png)
+
+*Olfr1014*-*Olfr1013* in P3OMP31:
+![](pics/Olfr1014.png)
+
+In the case of P3OMP2, it looks like the UTR from *Olfr691* is not fully annotated and the reads spill over to the first exon of *Olfr690*, but correspond still to *Olfr691*.
+
+![](pics/Olfr691.png)
+
+Finally, for P3OMP21, the second OR is not a neighbour of the top OR and they are not paralogous. The reads mapping to the second OR, *Olfr1420*, look like high-quality alignments. Thus, it seems that this second OR is transcribed, but at much lower levels than the top OR: 154 versus 59,304 normalised counts.
+
+![](pics/Olfr1420.png)
+
+Thus, in six out of the seven cases, we can dismiss the counts from the second most highly expressed OR.
+
+In the case of the third OR gene, only one cell has more than 30 normalised counts for protein-coding OR genes.
+
+```{r third}
+rbind(or.names[or.expr$third>30 & or.class[,3]=="protein_coding",], or.expr[or.expr$third>30 & or.class[,3]=="protein_coding",])
+```
+
+The second OR in this cell is product of mismapping, but the third OR shows good quality alignments. *Olfr855* is a distant paralogue of *Olfr43*, with only 42.49% identity between the two. Thus, these counts seem genuine.
+
+![](pics/Olfr855.png)
+
+Thus, we remove the counts of the second highest ORs where we've shown mismapping or spill-over. This leaves only two cells with a few hundred fragments mapped to a second OR gene, and P3OMP33 with several thousand, that are most likely from the top OR (but we cannot be sure, so we don't remove them).
+
+```{r top2_mismapping, fig.width=4, fig.height=4}
+## for these six cells, we shift the counts from the third, to second and so on
+or.expr[row.names(tmp)[-c(5,7)],2:4] <- or.expr[row.names(tmp)[-c(5,7)],3:5]
+or.names[row.names(tmp)[-c(5,7)],2:4] <- or.names[row.names(tmp)[-c(5,7)],3:5]
+or.class[row.names(tmp)[-c(5,7)],2:4] <- or.class[row.names(tmp)[-c(5,7)],3:5]
+## recover the sixth OR
+for(i in row.names(tmp)[-c(5,7)]){
+  tmp <- ors[,i][order(ors[,i], decreasing = TRUE)]
+  or.expr[i,5] <- tmp[6]
+  or.names[i,5] <- names(tmp[6])
+  or.class[i,5] <- ann[match(names(tmp[6]), ann$gene),]$biotype
+}
+
+## plot
+tmp <- data.frame(cell=rep(row.names(or.expr),2), rank=rep(colnames(or.expr)[1:2], each=nrow(or.expr)), expr=c(or.expr$first, or.expr$second))
+tmp$rank <- factor(tmp$rank, levels=colnames(or.expr)) # relevel
+
+is.pseudo <- c(or.class[,1], or.class[,2])
+is.pseudo <- ifelse(is.pseudo == "protein_coding", "protein_coding", "pseudogene")
+
+ggplot(tmp, aes(rank, log10(expr+1))) + geom_boxplot() + geom_jitter(width=0.05, aes(col=is.pseudo)) + labs(col="") + xlab("") + ylab("log10 normalised counts") + th #+ geom_text_repel(data = tmp[tmp$rank=="second" & tmp$expr > 30,], label=tmp[tmp$rank=="second" & tmp$expr > 30,]$cell, cex=2.5)
+```
+
+Seven cells show expression of annotated pseudogenes, and in all the pseudogene is the second most abundant OR locus expressed. Many are expressed at low levels (around 20 normalised counts) but three have several hundred normalised counts. Such expression levels, however, are still very low compared to the expression of the functional ORs, which have at least ~10,000 counts.
+
 
 ### Split OR expression
 
@@ -233,18 +372,19 @@ ggplot(or.expr, aes(1, first/1e3)) + geom_boxplot() + geom_jitter(width = 0.03, 
 
 And both are able to induce monogenic expression, since the second highest OR is expressed several hundred to several thousand times lower.
 
-```{r monogenic, message=FALSE, fig.width=4, fig.height=4}
+```{r monogenic, message=FALSE, fig.width=5, fig.height=4}
 tmp <- data.frame(rank=rep(colnames(or.expr), each=nrow(or.expr)), expr=c(or.expr$first, or.expr$second, or.expr$third, or.expr$fourth, or.expr$fifth))
 tmp$rank <- factor(tmp$rank, levels=colnames(or.expr)) # relevel
 
 is.pseudo <- c(or.class[,1], or.class[,2], or.class[,3], or.class[,4], or.class[,5])
 is.pseudo <- ifelse(is.pseudo == "protein_coding", "protein_coding", "pseudogene")
 
-ggplot(tmp, aes(rank, log10(expr))) + geom_boxplot() + geom_jitter(width=0.05, aes(shape=is.pseudo, col=rep(is.split,5))) + labs(col="", shape="") + xlab("") + ylab("log10 normalised counts") + th
+is.split <- factor(is.split, levels = c("singleExon", "multiExon"))
+
+ggplot(tmp, aes(rank, log10(expr+1))) + geom_boxplot() + geom_jitter(width=0.05, aes(col=is.pseudo, shape=rep(is.split,5))) + labs(col="", shape="") + xlab("") + ylab("log10 normalised counts") + th
 ```
 
 These data suggest that the split OR genes encode functional receptors that behave in the same way as those encoded within a single exon.
-
 
 ```{r info}
 sessionInfo()

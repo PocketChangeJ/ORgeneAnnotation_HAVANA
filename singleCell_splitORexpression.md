@@ -1,6 +1,6 @@
 ---
 title: "Single-cell RNA-seq of OSNs"
-date: '20 August, 2019'
+date: '23 August, 2019'
 output:
   html_document:
     keep_md: true
@@ -28,10 +28,10 @@ First, we load the count matrix and mapping statistics (parsed from the STAR `Lo
 
 
 ```r
-ann <- read.table(paste0(dir, "geneAnnotation.Ensembl_v93.tsv"), stringsAsFactors = FALSE)
+ann <- read.table(paste0(dir, "data/geneAnnotation.Ensembl_v93.tsv"), stringsAsFactors = FALSE)
 
-data <- read.table(paste0(dir, "geneCounts_P3OMPcells.RAW.tsv"), stringsAsFactors = FALSE)
-mapping.stats <- read.table(paste0(dir, "mappingStats.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
+data <- read.table(paste0(dir, "data/geneCounts_P3OMPcells.RAW.tsv"), stringsAsFactors = FALSE)
+mapping.stats <- read.table(paste0(dir, "data/mappingStats.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
 
 counting.stats <- as.data.frame(t(data[1:4,-c(1:2)]))
 data <- data[-c(1:4),]
@@ -177,7 +177,7 @@ ggplot(as.data.frame(or.expr), aes(1:nrow(or.expr), first, col=mapping.stats$tot
 # sd(or.expr$first) # 2.48
 ```
 
-The one cell without abundant OR expression expresses instead a TAAR gene, a different class of receptor protein, also found in a small proportion of OSNs.
+The one cell without abundant OR expression (`row.names(or.expr)[which.min(or.expr$first)]`) expresses instead a TAAR gene, a different class of receptor protein, also found in a small proportion of OSNs.
 
 
 ```r
@@ -247,14 +247,63 @@ ggplot(as.data.frame(ranks), aes(1:length(ranks), ranks)) + geom_point() + xlab(
 
 ![](singleCell_splitORexpression_files/figure-html/ORrank-1.png)<!-- -->
 
+#### Index switching
 
-And all but one show clear monogenic expression, with the second highest OR gene expressed at least a hundred times less than the top OR gene.
+These cells were sequenced on the HiSeq X Ten platform, which suffers from index switching. This leads to some reads from a given library being incorrectly assigned to other libraries that share one of the indices used for multiplexing. Below is a heatmap of all the OR genes detected, and the coloured bar at the top indicates one of the indices used for multiplexing. It is clear that among the libraries sharing the same index there is index switching, i.e., a small number of reads from the very highly expressed OR gene from each cell bleeding into the others cells with the same index.
+
+
+```r
+multiplexing <- read.table(paste0(dir, "data/indices.tsv"), header = TRUE, stringsAsFactors = FALSE)
+multiplexing <- multiplexing[match(colnames(ors), multiplexing$cell),]
+
+heatmap.2(as.matrix(log10(ors+1)), trace="none", col=rev(brewer.pal(n=10, "RdYlBu")), Colv = FALSE, ColSideColors = as.character(factor(multiplexing$index2, labels = rainbow(n=3))), dendrogram = "row", key.title = "", key.xlab = "log10 conts")
+```
+
+![](singleCell_splitORexpression_files/figure-html/multiplexing-1.png)<!-- -->
+
+Thus, for all the most highly expressed OR genes per cell, we set the counts in other cells to zero.
+
+
+```r
+## remove the counts of top expressed genes in other cells, since they are bleed through
+for(i in or.names[,1][-21]){
+  ors[i,-which.max(ors[i,])] <- 0
+}
+
+## recompute ranking
+or.expr <- matrix(ncol=5, nrow=ncol(ors))
+or.names <- or.expr
+or.class <- or.expr
+
+for(i in 1:ncol(ors)){
+  tmp <- ors[,i][order(ors[,i], decreasing = TRUE)]
+  or.expr[i,] <- tmp[1:5]
+  or.names[i,] <- names(tmp[1:5])
+  or.class[i,] <- ann[match(names(tmp[1:5]), ann$gene),]$biotype
+}
+n <- c("first", "second", "third", "fourth", "fifth")
+row.names(or.expr) <- colnames(ors); colnames(or.expr) <- n; or.expr <- as.data.frame(or.expr)
+row.names(or.names) <- colnames(ors); colnames(or.names) <- n;
+row.names(or.class) <- colnames(ors); colnames(or.class) <- n;
+
+## add Taar4 to the or.expr data
+tmp <- other[,which(colnames(other) == row.names(or.expr)[which.min(or.expr$first)])]
+or.expr[idx,][-1] <- or.expr[idx,][-5]
+or.expr[idx,][1] <- tmp[tmp>0]
+
+or.names[idx,][-1] <- or.names[idx,][-5]
+or.names[idx,][1] <- names(tmp[tmp>0])
+```
+
+#### Monogenic OR expression
+
+All but one cell show clear monogenic expression, with the second highest OR gene expressed at least a hundred times less than the top OR gene.
 
 
 ```r
 or.expr <- 2^or.expr-1
 
-ggplot(as.data.frame(or.expr), aes(1, log10(or.expr$first/or.expr$second))) + geom_boxplot() + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5) + xlab("single OSNs") + ylab("first / second OR") + th + labs(col="exprFirstOR", shape="biotype") + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + scale_y_continuous(breaks = 1:5, labels = c(10,100,1000,1e4,1e5))
+ggplot(as.data.frame(or.expr), aes(1, log10(or.expr$first/(or.expr$second+1)))) + geom_boxplot() + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5) + xlab("single OSNs") + ylab("first / second OR") + th + labs(col="exprFirstOR", shape="biotype") + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + scale_y_continuous(breaks = 1:5, labels = c(10,100,1000,1e4,1e5))
 ```
 
 ![](singleCell_splitORexpression_files/figure-html/secondOR-1.png)<!-- -->
@@ -270,16 +319,148 @@ rbind(or.names[which.max(or.expr$second),], or.expr[which.max(or.expr$second),])
 ##                    first           second            third
 ## 1               Olfr1195         Olfr1193     Olfr1372-ps1
 ## P3OMP33 12515.8431917587 3288.98904946998 627.618307803594
-##                   fourth            fifth
-## 1               Olfr1284           Olfr17
-## P3OMP33 1.92226127964347 1.92226127964347
+##                    fourth             fifth
+## 1                Olfr1383          Olfr1370
+## P3OMP33 0.961130639821737 0.961130639821737
 ```
 
-*Olfr1195* and *Olfr1193* are adjacent genes. *Olfr1195* shows robust expression. Additional reads map uniquely to *Olfr1193*, including the coding sequence, but these do no support the annotated gene model. Instead, the data shows an additional isoform that spans both genes. Thus, it is likely that this cell expresses *Olfr1195* monogenically, and that some of its reads have been incorrectly assigned to *Olfr1195* due to lack of annotation of additional isoforms. Since the two genes are in opposite strands, strand-specific RNA-seq could resolve this issue.
+*Olfr1195* and *Olfr1193* are adjacent genes, on opposite strands. *Olfr1195* shows robust expression. Additional reads map uniquely to *Olfr1193*, including the coding sequence, but these do no support the annotated gene model. Instead, the data shows an additional isoform that spans both genes. Thus, it is likely that this cell expresses *Olfr1195* monogenically, and that some of its reads have been incorrectly assigned to *Olfr1195* due to lack of annotation of additional isoforms. If indeed a new isoform covers both genes, and is transcribed from the reverse strand, then only OLFR1195 would be translated; the splice data supports this. 
 
-Most other cells have only tens of counts on the second most abundant OR gene. There are six cells with more than 45 counts from protein-coding genes, generally a few hundred. In four of the six, the second OR is adjacent to the top expressed gene. In most cases, the second receptor is a close paralogue of the top receptor. In these cases, the second OR gets a certain amount of reads multimapped to both receptors; these are not counted and thus the expression of the top receptor is underestimated. Often a small number of reads also map uniquely, but with several mismatches that are consistent across all reads, a sign of mismapping due to sequencing errors. Additionally, some of the UTRs are too short and thus reads from the top receptor spill over to the second receptor, just because of proximity. In all these cases, these estimates of hundreds of counts are spurious. Thus, after accounting for mapping and annotation inaccuracies, mongenic expression is strongly observed in all OSNs.
+![](pics/Olfr1195.png)
 
-Seven cells show expression of annotated pseudogenes, and in five of these, the pseudogene is the second most abundant OR locus expressed. Many are expressed at low levels (around 20 normalised counts) but three have several hundred normalised counts. Such expression levels, however, are still very low compared to the expression of the functional ORs, which have at least ~10,000 counts.
+Nonetheless, since the missing isoform does cover *Olfr1193* coding sequence, we cannot rule out that this gene is being expressed from the forward strand, and a second OR protein generated. 
+
+Most other cells have only tens of counts on the second most abundant OR gene. 
+
+
+```r
+tmp <- data.frame(cell=rep(row.names(or.expr),2), rank=rep(colnames(or.expr)[1:2], each=nrow(or.expr)), expr=c(or.expr$first, or.expr$second))
+tmp$rank <- factor(tmp$rank, levels=colnames(or.expr)) # relevel
+
+is.pseudo <- c(or.class[,1], or.class[,2])
+is.pseudo <- ifelse(is.pseudo == "protein_coding", "protein_coding", "pseudogene")
+
+ggplot(tmp, aes(rank, log10(expr+1))) + geom_boxplot() + geom_jitter(width=0.05, aes(col=is.pseudo)) + labs(col="") + xlab("") + ylab("log10 normalised counts") + th #+ geom_text_repel(data = tmp[tmp$rank=="second" & tmp$expr > 30,], label=tmp[tmp$rank=="second" & tmp$expr > 30,]$cell, cex=2.5)
+```
+
+![](singleCell_splitORexpression_files/figure-html/top2-1.png)<!-- -->
+
+There are seven cells with more than 30 counts from protein-coding genes, generally a few hundred, except for P3OMP33 which we have already discussed.
+
+
+```r
+tmp <- or.expr[or.expr$second>45,]
+tmp[or.class[or.expr$second>45,2]=="protein_coding",1:2]
+```
+
+```
+##            first     second
+## P3OMP2  81182.43  225.98531
+## P3OMP7  67784.55   79.44557
+## P3OMP11 49401.91   47.98269
+## P3OMP19 80479.43  319.48427
+## P3OMP21 59303.92  153.90643
+## P3OMP31 78982.72  584.09475
+## P3OMP33 12515.84 3288.98905
+```
+
+In five of the seven, the second OR is adjacent to the top expressed gene, and often these are paralogues with high identity. This is suggestive of mismapping from the top to the second OR. 
+
+
+```r
+tmp <- or.names[or.expr$second>45,]
+tmp <- as.data.frame(tmp[or.class[or.expr$second>45,2]=="protein_coding",1:2])
+tmp$adjacent <- c("yes", "yes", "skip1", "yes", "no", "yes", "yes")
+tmp$identity <- c(71.11,92.63,89.81,98.72,NA,88.85,57.14) # from Ensembl's paalogue data
+tmp
+```
+
+```
+##               first   second adjacent identity
+## P3OMP2      Olfr691  Olfr690      yes    71.11
+## P3OMP7     Olfr1348 Olfr1347      yes    92.63
+## P3OMP11     Olfr591  Olfr593    skip1    89.81
+## P3OMP19      Olfr43  Olfr403      yes    98.72
+## P3OMP21 Olfr766-ps1 Olfr1420       no       NA
+## P3OMP31    Olfr1014 Olfr1013      yes    88.85
+## P3OMP33    Olfr1195 Olfr1193      yes    57.14
+```
+
+This is the case for P3OMP7, P3OMP11, P3OMP19 and P3OMP31, where the second OR gene has mostly multimapped reads (unique reads are coloured blue; multimapped in any other colour) and a few uniquely mapped ones, but with several mismatches that are supported by several reads.
+
+*Olfr1348*-*Olfr1347* in P3OMP7:
+
+![](pics/Olfr1348.png)
+
+*Olfr591*-*Olfr593* in P3OMP11:
+![](pics/Olfr591.png)
+
+*Olfr43*-*Olfr403* in P3OMP19:
+![](pics/Olfr43.png)
+
+*Olfr1014*-*Olfr1013* in P3OMP31:
+![](pics/Olfr1014.png)
+
+In the case of P3OMP2, it looks like the UTR from *Olfr691* is not fully annotated and the reads spill over to the first exon of *Olfr690*, but correspond still to *Olfr691*.
+
+![](pics/Olfr691.png)
+
+Finally, for P3OMP21, the second OR is not a neighbour of the top OR and they are not paralogous. The reads mapping to the second OR, *Olfr1420*, look like high-quality alignments. Thus, it seems that this second OR is transcribed, but at much lower levels than the top OR: 154 versus 59,304 normalised counts.
+
+![](pics/Olfr1420.png)
+
+Thus, in six out of the seven cases, we can dismiss the counts from the second most highly expressed OR.
+
+In the case of the third OR gene, only one cell has more than 30 normalised counts for protein-coding OR genes.
+
+
+```r
+rbind(or.names[or.expr$third>30 & or.class[,3]=="protein_coding",], or.expr[or.expr$third>30 & or.class[,3]=="protein_coding",])
+```
+
+```
+##                    first          second            third           fourth
+## 1                 Olfr43         Olfr403          Olfr855      Olfr408-ps1
+## P3OMP19 80479.4275178413 319.48427297422 113.828228993809 1.91307947888754
+##                     fifth
+## 1                Olfr1508
+## P3OMP19 0.956539739443772
+```
+
+The second OR in this cell is product of mismapping, but the third OR shows good quality alignments. *Olfr855* is a distant paralogue of *Olfr43*, with only 42.49% identity between the two. Thus, these counts seem genuine.
+
+![](pics/Olfr855.png)
+
+Thus, we remove the counts of the second highest ORs where we've shown mismapping or spill-over. This leaves only two cells with a few hundred fragments mapped to a second OR gene, and P3OMP33 with several thousand, that are most likely from the top OR (but we cannot be sure, so we don't remove them).
+
+
+```r
+## for these six cells, we shift the counts from the third, to second and so on
+or.expr[row.names(tmp)[-c(5,7)],2:4] <- or.expr[row.names(tmp)[-c(5,7)],3:5]
+or.names[row.names(tmp)[-c(5,7)],2:4] <- or.names[row.names(tmp)[-c(5,7)],3:5]
+or.class[row.names(tmp)[-c(5,7)],2:4] <- or.class[row.names(tmp)[-c(5,7)],3:5]
+## recover the sixth OR
+for(i in row.names(tmp)[-c(5,7)]){
+  tmp <- ors[,i][order(ors[,i], decreasing = TRUE)]
+  or.expr[i,5] <- tmp[6]
+  or.names[i,5] <- names(tmp[6])
+  or.class[i,5] <- ann[match(names(tmp[6]), ann$gene),]$biotype
+}
+
+## plot
+tmp <- data.frame(cell=rep(row.names(or.expr),2), rank=rep(colnames(or.expr)[1:2], each=nrow(or.expr)), expr=c(or.expr$first, or.expr$second))
+tmp$rank <- factor(tmp$rank, levels=colnames(or.expr)) # relevel
+
+is.pseudo <- c(or.class[,1], or.class[,2])
+is.pseudo <- ifelse(is.pseudo == "protein_coding", "protein_coding", "pseudogene")
+
+ggplot(tmp, aes(rank, log10(expr+1))) + geom_boxplot() + geom_jitter(width=0.05, aes(col=is.pseudo)) + labs(col="") + xlab("") + ylab("log10 normalised counts") + th #+ geom_text_repel(data = tmp[tmp$rank=="second" & tmp$expr > 30,], label=tmp[tmp$rank=="second" & tmp$expr > 30,]$cell, cex=2.5)
+```
+
+![](singleCell_splitORexpression_files/figure-html/top2_mismapping-1.png)<!-- -->
+
+Seven cells show expression of annotated pseudogenes, and in all the pseudogene is the second most abundant OR locus expressed. Many are expressed at low levels (around 20 normalised counts) but three have several hundred normalised counts. Such expression levels, however, are still very low compared to the expression of the functional ORs, which have at least ~10,000 counts.
+
 
 ### Split OR expression
 
@@ -307,13 +488,14 @@ tmp$rank <- factor(tmp$rank, levels=colnames(or.expr)) # relevel
 is.pseudo <- c(or.class[,1], or.class[,2], or.class[,3], or.class[,4], or.class[,5])
 is.pseudo <- ifelse(is.pseudo == "protein_coding", "protein_coding", "pseudogene")
 
-ggplot(tmp, aes(rank, log10(expr))) + geom_boxplot() + geom_jitter(width=0.05, aes(shape=is.pseudo, col=rep(is.split,5))) + labs(col="", shape="") + xlab("") + ylab("log10 normalised counts") + th
+is.split <- factor(is.split, levels = c("singleExon", "multiExon"))
+
+ggplot(tmp, aes(rank, log10(expr+1))) + geom_boxplot() + geom_jitter(width=0.05, aes(col=is.pseudo, shape=rep(is.split,5))) + labs(col="", shape="") + xlab("") + ylab("log10 normalised counts") + th
 ```
 
 ![](singleCell_splitORexpression_files/figure-html/monogenic-1.png)<!-- -->
 
 These data suggest that the split OR genes encode functional receptors that behave in the same way as those encoded within a single exon.
-
 
 
 ```r
@@ -337,45 +519,48 @@ sessionInfo()
 ## [8] methods   base     
 ## 
 ## other attached packages:
-##  [1] RColorBrewer_1.1-2          ggpubr_0.2                 
-##  [3] magrittr_1.5                scater_1.10.1              
-##  [5] ggplot2_3.1.0               scran_1.10.2               
-##  [7] SingleCellExperiment_1.4.1  SummarizedExperiment_1.12.0
-##  [9] DelayedArray_0.8.0          matrixStats_0.54.0         
-## [11] Biobase_2.42.0              GenomicRanges_1.34.0       
-## [13] GenomeInfoDb_1.18.2         IRanges_2.16.0             
-## [15] S4Vectors_0.20.1            BiocGenerics_0.28.0        
-## [17] BiocParallel_1.16.6        
+##  [1] gplots_3.0.1.1              RColorBrewer_1.1-2         
+##  [3] ggrepel_0.8.0               ggpubr_0.2                 
+##  [5] magrittr_1.5                scater_1.10.1              
+##  [7] ggplot2_3.1.0               scran_1.10.2               
+##  [9] SingleCellExperiment_1.4.1  SummarizedExperiment_1.12.0
+## [11] DelayedArray_0.8.0          matrixStats_0.54.0         
+## [13] Biobase_2.42.0              GenomicRanges_1.34.0       
+## [15] GenomeInfoDb_1.18.2         IRanges_2.16.0             
+## [17] S4Vectors_0.20.1            BiocGenerics_0.28.0        
+## [19] BiocParallel_1.16.6        
 ## 
 ## loaded via a namespace (and not attached):
-##  [1] Rcpp_1.0.0               locfit_1.5-9.1          
-##  [3] lattice_0.20-38          assertthat_0.2.0        
-##  [5] digest_0.6.18            R6_2.4.0                
-##  [7] plyr_1.8.4               dynamicTreeCut_1.63-1   
-##  [9] evaluate_0.13            pillar_1.3.1            
-## [11] zlibbioc_1.28.0          rlang_0.3.1             
-## [13] lazyeval_0.2.1           Matrix_1.2-15           
-## [15] rmarkdown_1.12           labeling_0.3            
-## [17] BiocNeighbors_1.0.0      statmod_1.4.30          
-## [19] stringr_1.4.0            igraph_1.2.4            
-## [21] RCurl_1.95-4.12          munsell_0.5.0           
-## [23] HDF5Array_1.10.1         vipor_0.4.5             
-## [25] compiler_3.5.3           xfun_0.5                
-## [27] pkgconfig_2.0.2          ggbeeswarm_0.6.0        
-## [29] htmltools_0.3.6          tidyselect_0.2.5        
-## [31] tibble_2.0.1             gridExtra_2.3           
-## [33] GenomeInfoDbData_1.2.0   edgeR_3.24.3            
-## [35] viridisLite_0.3.0        withr_2.1.2             
-## [37] crayon_1.3.4             dplyr_0.8.0.1           
-## [39] bitops_1.0-6             grid_3.5.3              
-## [41] gtable_0.2.0             scales_1.0.0            
-## [43] stringi_1.4.3            reshape2_1.4.3          
-## [45] XVector_0.22.0           viridis_0.5.1           
-## [47] limma_3.38.3             DelayedMatrixStats_1.4.0
-## [49] cowplot_0.9.4            Rhdf5lib_1.4.2          
-## [51] tools_3.5.3              glue_1.3.0              
-## [53] beeswarm_0.2.3           purrr_0.3.1             
-## [55] yaml_2.2.0               colorspace_1.4-0        
-## [57] rhdf5_2.26.2             knitr_1.22
+##  [1] viridis_0.5.1            dynamicTreeCut_1.63-1   
+##  [3] edgeR_3.24.3             viridisLite_0.3.0       
+##  [5] DelayedMatrixStats_1.4.0 gtools_3.8.1            
+##  [7] assertthat_0.2.0         statmod_1.4.30          
+##  [9] GenomeInfoDbData_1.2.0   vipor_0.4.5             
+## [11] yaml_2.2.0               pillar_1.3.1            
+## [13] lattice_0.20-38          glue_1.3.0              
+## [15] limma_3.38.3             digest_0.6.18           
+## [17] XVector_0.22.0           colorspace_1.4-0        
+## [19] cowplot_0.9.4            htmltools_0.3.6         
+## [21] Matrix_1.2-15            plyr_1.8.4              
+## [23] pkgconfig_2.0.2          zlibbioc_1.28.0         
+## [25] purrr_0.3.1              scales_1.0.0            
+## [27] gdata_2.18.0             HDF5Array_1.10.1        
+## [29] tibble_2.0.1             withr_2.1.2             
+## [31] lazyeval_0.2.1           crayon_1.3.4            
+## [33] evaluate_0.13            beeswarm_0.2.3          
+## [35] tools_3.5.3              stringr_1.4.0           
+## [37] Rhdf5lib_1.4.2           munsell_0.5.0           
+## [39] locfit_1.5-9.1           compiler_3.5.3          
+## [41] caTools_1.17.1.2         rlang_0.3.1             
+## [43] rhdf5_2.26.2             grid_3.5.3              
+## [45] RCurl_1.95-4.12          BiocNeighbors_1.0.0     
+## [47] igraph_1.2.4             labeling_0.3            
+## [49] bitops_1.0-6             rmarkdown_1.12          
+## [51] gtable_0.2.0             reshape2_1.4.3          
+## [53] R6_2.4.0                 gridExtra_2.3           
+## [55] knitr_1.22               dplyr_0.8.0.1           
+## [57] KernSmooth_2.23-15       stringi_1.4.3           
+## [59] ggbeeswarm_0.6.0         Rcpp_1.0.0              
+## [61] tidyselect_0.2.5         xfun_0.5
 ```
 
