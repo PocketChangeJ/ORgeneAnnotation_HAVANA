@@ -16,17 +16,18 @@ data <- read.table(paste0(dir, "STAR/", files[1], "/ReadsPerGene.out.tab"), stri
 stopifnot(identical(row.names(ann), data$V1[-c(1:4)]))
 row.names(data) <- data$V1
 data$V1 <- NULL
-data$gene <- ann[match(row.names(data), row.names(ann)),1]
-data$chr <- ann[match(row.names(data), row.names(ann)),2]
-data <- data[,c(2:3,1)]
-colnames(data)[3] <- files[1]
+
+## add gene annotation columns
+tmp <- row.names(data)[1:4]
+data <- cbind(ann[match(row.names(data), row.names(ann)),], data)
+colnames(data)[ncol(data)] <- files[1]
+row.names(data)[1:4] <- tmp
 
 ## read files for all other cells and append to count matrix
 for(f in files[-1]){
   data <- cbind(data, read.table(paste0(dir, "STAR/", f, "/ReadsPerGene.out.tab"), stringsAsFactors=FALSE)[,2])
 }
-colnames(data)[-c(1:2)] <- files
+colnames(data)[-c(1:6)] <- files
 
 ## save
 write.table(data, paste0(dir, "geneCounts_P3OMPcells.RAW.tsv"), quote=FALSE, sep="\t")
-write.table(ann, paste0(dir, "geneAnnotation.Ensembl_v93.tsv"), quote=FALSE, sep="\t")
