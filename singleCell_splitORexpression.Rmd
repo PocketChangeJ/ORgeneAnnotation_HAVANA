@@ -22,8 +22,8 @@ library(ggrepel)
 library(RColorBrewer)
 library(gplots)
 
-# dir <- "/Users/ibarra01/OneDrive - CRUK Cambridge Institute/ENSEMBL/singleCell/Khan/"
-dir <- "/Users/ibarra01/OneDrive/OneDrive - Cancer Research UK, Cambridge Institute/github/ORgeneAnnotation_HAVANA/"
+dir <- "/Users/ibarra01/OneDrive - CRUK Cambridge Institute/github/ORgeneAnnotation_HAVANA/"
+# dir <- "/Users/ibarra01/OneDrive/OneDrive - Cancer Research UK, Cambridge Institute/github/ORgeneAnnotation_HAVANA/"
 
 th <- theme_bw() + theme(axis.text.x = element_text(size=10), axis.title.x = element_text(size=12), axis.text.y = element_text(size=10), axis.title.y = element_text(size=12), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"), panel.border = element_blank(), plot.title = element_text(face="bold", hjust = 0.5, size=10))
 ```
@@ -354,7 +354,7 @@ is.pseudo <- ifelse(is.pseudo == "protein_coding", "protein_coding", "pseudogene
 ggplot(tmp, aes(rank, log10(expr+1))) + geom_boxplot() + geom_jitter(width=0.05, aes(col=is.pseudo)) + labs(col="") + xlab("") + ylab("log10 normalised counts") + th #+ geom_text_repel(data = tmp[tmp$rank=="second" & tmp$expr > 30,], label=tmp[tmp$rank=="second" & tmp$expr > 30,]$cell, cex=2.5)
 ```
 
-Seven cells show expression of annotated pseudogenes, and in all the pseudogene is the second most abundant OR locus expressed. Many are expressed at low levels (around 20 normalised counts) but three have several hundred normalised counts. Such expression levels, however, are still very low compared to the expression of the functional ORs, which have at least ~10,000 counts.
+Ten cells show expression of annotated pseudogenes, and in seven the pseudogene is the second most abundant OR locus expressed. Many are expressed at low levels (around 20 normalised counts) but three have several hundred normalised counts. Such expression levels, however, are still very low compared to the expression of the functional ORs, which have at least ~10,000 counts.
 
 
 ### Split OR expression
