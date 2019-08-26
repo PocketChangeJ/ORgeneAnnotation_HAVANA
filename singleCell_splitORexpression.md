@@ -18,7 +18,7 @@ Single-cell RNA-seq data from 34 single OSNs picked by hand from a GFP-OMP mouse
 
 Sequencing reads were mapped to the mouse genome `mm10` using `STAR version 2.6.0c` with gene quantification enabled, using `Ensembl version 93` annotation.
 
-The counts from each sample were compiled into a combined count matrix with the script `readGeneCounts.R`. These can be downloaded from: ``
+The counts from each sample were compiled into a combined count matrix with the script `readGeneCounts.R`. These can be downloaded from ArrayExrpess.
 
 ------
 
@@ -28,14 +28,21 @@ First, we load the count matrix and mapping statistics (parsed from the STAR `Lo
 
 
 ```r
-ann <- read.table(paste0(dir, "data/geneAnnotation.Ensembl_v93.tsv"), stringsAsFactors = FALSE)
-
+## raw count matrix
 data <- read.table(paste0(dir, "data/geneCounts_P3OMPcells.RAW.tsv"), stringsAsFactors = FALSE)
+
+## mapping stats from STAR logs
 mapping.stats <- read.table(paste0(dir, "data/mappingStats.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
 
-counting.stats <- as.data.frame(t(data[1:4,-c(1:2)]))
+## separate gene annotation
+ann <- data[-c(1:4),1:6]
+data <- data[,-c(1:6)]
+
+## separate the counting stats
+counting.stats <- as.data.frame(t(data[1:4,]))
 data <- data[-c(1:4),]
-dim(data[,-c(1:2)])
+
+dim(data)
 ```
 
 ```
@@ -46,13 +53,13 @@ dim(data[,-c(1:2)])
 
 Before analysing the data itself we need to check the quality of each library and remove any that are not good enough. Since the cells were hand picked and selected to be healthy looking cells we expect that most libraries will be of good quality.
 
-To assess quality we check the general mapping statistics, the proportion of reads in mitochondrial reads and total number of detected genes per cell.
+To assess quality we check the general mapping statistics, the proportion of reads in mitochondrial genes and total number of detected genes per cell.
 
 Samples were sequenced to a median depth of ~3 million fragments. The distribution of library sizes is quite uniform, with no obvious outliers.
 
 
 ```r
-counting.stats <- cbind(counting.stats, colSums(data[,-c(1:2)]))
+counting.stats <- cbind(counting.stats, colSums(data))
 colnames(counting.stats)[5] <- "N_inExons"
 
 ggplot(mapping.stats, aes(1, total/1e6)) + geom_violin() + geom_boxplot(width=0.1, col="grey") + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5, fill="darkgrey") + ylab("total fragments (millions)") + xlab("") + th + theme(axis.title.x = element_blank(), axis.text.x = element_blank(), axis.ticks.x = element_blank())
@@ -86,8 +93,9 @@ The proportion of fragments mapped to mitochondrial genes is very low for all sa
 
 
 ```r
-mt <- colSums(data[data$chr=="MT",-c(1:2)])
-nGenes <- apply(data[,-c(1:2)], 2, function(x) sum(x>0))
+stopifnot(identical(row.names(data), row.names(ann)))
+mt <- colSums(data[ann$chr=="MT",])
+nGenes <- apply(data, 2, function(x) sum(x>0))
 
 plots <- list()
 plots[[1]] <- ggplot(mapping.stats, aes(1, mt/total*100)) + geom_violin(trim=FALSE) + geom_jitter(aes(1, mt/total*100, col=mapping.stats$total/1e6), width = 0.01) + ylab("% mapped to MT genes") + scale_colour_gradientn(colours = (brewer.pal(n = 9, name = "Blues")[-1])) + labs(colour="libsize") + xlab("") + th + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
@@ -103,19 +111,21 @@ Overall, all samples are of good-quality. We will remove only the sample with lo
 
 
 ```r
+## remove the sample of lower quality
 bad.qual <- row.names(mapping.stats)[which.min(nGenes)]
 data <- data[,-which(colnames(data)==bad.qual)]
-data <- data[rowSums(data[,-c(1:2)])>0,]
-dim(data[,-c(1:2)])
+
+mapping.stats <- mapping.stats[-which(row.names(mapping.stats)==bad.qual),]
+counting.stats <- counting.stats[-which(row.names(counting.stats)==bad.qual),]
+
+## remove non-expressed genes
+data <- data[rowSums(data)>0,]
+ann <- ann[row.names(data),]
+dim(data)
 ```
 
 ```
 ## [1] 17511    33
-```
-
-```r
-mapping.stats <- mapping.stats[-which(row.names(mapping.stats)==bad.qual),]
-counting.stats <- counting.stats[-which(row.names(counting.stats)==bad.qual),]
 ```
 
 ### Normalisation
@@ -125,8 +135,8 @@ Next we normalise the data to remove composition biases between samples. We use 
 
 ```r
 ## create object
-sce <- SingleCellExperiment(assays=list(counts=as.matrix(data[,-c(1:2)])))
-rowData(sce)$gene <- data$gene
+sce <- SingleCellExperiment(assays=list(counts=as.matrix(data)))
+rowData(sce)$gene <- ann$gene
 row.names(sce) <- uniquifyFeatureNames(row.names(assay(sce)), rowData(sce)$gene)
 
 ## size factors
@@ -177,7 +187,7 @@ ggplot(as.data.frame(or.expr), aes(1:nrow(or.expr), first, col=mapping.stats$tot
 # sd(or.expr$first) # 2.48
 ```
 
-The one cell without abundant OR expression (`row.names(or.expr)[which.min(or.expr$first)]`) expresses instead a TAAR gene, a different class of receptor protein, also found in a small proportion of OSNs.
+The one cell without abundant OR expression (`row.names(or.expr)[which.min(or.expr$first)]`) expresses instead a TAAR gene, a different class of receptor protein, also found in a smaller proportion of OSNs.
 
 
 ```r
@@ -386,7 +396,7 @@ tmp
 ## P3OMP33    Olfr1195 Olfr1193      yes    57.14
 ```
 
-This is the case for P3OMP7, P3OMP11, P3OMP19 and P3OMP31, where the second OR gene has mostly multimapped reads (unique reads are coloured blue; multimapped in any other colour) and a few uniquely mapped ones, but with several mismatches that are supported by several reads.
+This is the case for P3OMP7, P3OMP11, P3OMP19, and P3OMP31, where the second OR gene has mostly multimapped reads (unique reads are coloured blue; multimapped in any other colour) and a few uniquely mapped ones, but with several mismatches that are supported by many reads.
 
 *Olfr1348*-*Olfr1347* in P3OMP7:
 
@@ -427,7 +437,7 @@ rbind(or.names[or.expr$third>30 & or.class[,3]=="protein_coding",], or.expr[or.e
 ## P3OMP19 1.91307930987927 0.956539654939634
 ```
 
-The second OR in this cell is product of mismapping, but the third OR shows good quality alignments. *Olfr855* is a distant paralogue of *Olfr43*, with only 42.49% identity between the two. Thus, these counts seem genuine.
+We've already seen that second OR in this cell is product of mismapping, but the third OR shows good quality alignments. *Olfr855* is a distant paralogue of *Olfr43*, with only 42.49% identity between the two. These counts seem genuine.
 
 ![](pics/Olfr855.png)
 
