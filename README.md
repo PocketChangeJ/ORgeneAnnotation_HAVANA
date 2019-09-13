@@ -2,7 +2,7 @@
 
 This repository contains the code used in the analyses for the paper "Expert Curation of the Human and Mouse Olfactory Receptor Gene Repertoires Identifies Conserved Coding Regions Split Across Two Exons", by If Barnes, Ximena Ibarra-Soria and collaborators.
 
-#### Transcriptome of human olfactory mucosa
+### Transcriptome of human olfactory mucosa
 
 The markdown document `human_ORexpression` contains the code used to analyse the bulk RNA-seq data from human biopsies of olfactory mucosa. 
 
@@ -19,7 +19,7 @@ Additional files required:
 - `data/mouseOR_length.tsv` provides the length in bp for each mouse OR gene, calculated from the Ensembl-HAVANA curated gene models.
 - `data/OR_intron_sizes_human.txt` and `data/OR_intron_sizes_mouse.txt` contain the length in bp of the introns for every protein-coding OR transcript in the human and mouse repertoires, respectively. Data is from the Ensembl-HAVANA curated gene models. The introns are always presented from 5' to 3', irrespective of gene strand. For genes without introns, the filed for 'intron1' is set to 0.
 
-#### Single-cell RNA-seq of mouse OSNs
+### Single-cell RNA-seq of mouse OSNs
 
 The markdown document `singleCell_splitORexpression` contains the code used to analyse the single-cell RNA-seq data from 34 manually picked OSNs, obtained from heterozygous OMP-GFP mice, at postnatal day 3.
 
