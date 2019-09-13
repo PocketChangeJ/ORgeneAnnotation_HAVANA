@@ -18,7 +18,7 @@ Single-cell RNA-seq data from 34 single OSNs picked by hand from a GFP-OMP mouse
 
 Sequencing reads were mapped to the mouse genome `mm10` using `STAR version 2.6.0c` with gene quantification enabled, using `Ensembl version 93` annotation.
 
-The counts from each sample were compiled into a combined count matrix with the script `readGeneCounts.R`. These can be downloaded from [ArrayExpress](https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-8285).
+The counts from each sample were compiled into a combined count matrix. These can be downloaded from [ArrayExpress](https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-8285).
 
 ------
 
