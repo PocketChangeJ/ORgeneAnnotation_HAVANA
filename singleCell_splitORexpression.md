@@ -1,6 +1,6 @@
 ---
 title: "Single-cell RNA-seq of OSNs"
-date: '26 August, 2019'
+date: '13 September, 2019'
 output:
   html_document:
     keep_md: true
@@ -18,7 +18,7 @@ Single-cell RNA-seq data from 34 single OSNs picked by hand from a GFP-OMP mouse
 
 Sequencing reads were mapped to the mouse genome `mm10` using `STAR version 2.6.0c` with gene quantification enabled, using `Ensembl version 93` annotation.
 
-The counts from each sample were compiled into a combined count matrix with the script `readGeneCounts.R`. These can be downloaded from ArrayExrpess.
+The counts from each sample were compiled into a combined count matrix with the script `readGeneCounts.R`. These can be downloaded from [ArrayExpress](https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-8285).
 
 ------
 
@@ -32,7 +32,7 @@ First, we load the count matrix and mapping statistics (parsed from the STAR `Lo
 data <- read.table(paste0(dir, "data/geneCounts_P3OMPcells.RAW.tsv"), stringsAsFactors = FALSE)
 
 ## mapping stats from STAR logs
-mapping.stats <- read.table(paste0(dir, "data/mappingStats.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
+mapping.stats <- read.table(paste0(dir, "data/mappingStats_singleCells.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
 
 ## separate gene annotation
 ann <- data[-c(1:4),1:6]
@@ -263,7 +263,7 @@ These cells were sequenced on the HiSeq X Ten platform, which suffers from index
 
 
 ```r
-multiplexing <- read.table(paste0(dir, "data/indices.tsv"), header = TRUE, stringsAsFactors = FALSE)
+multiplexing <- read.table(paste0(dir, "data/indices_singleCells.tsv"), header = TRUE, stringsAsFactors = FALSE)
 multiplexing <- multiplexing[match(colnames(ors), multiplexing$cell),]
 
 heatmap.2(as.matrix(log10(ors+1)), trace="none", col=rev(brewer.pal(n=10, "RdYlBu")), Colv = FALSE, ColSideColors = as.character(factor(multiplexing$index2, labels = rainbow(n=3))), dendrogram = "row", key.title = "", key.xlab = "log10 conts")
@@ -326,12 +326,12 @@ rbind(or.names[which.max(or.expr$second),], or.expr[which.max(or.expr$second),])
 ```
 
 ```
-##                    first           second            third          fourth
-## 1               Olfr1195         Olfr1193     Olfr1372-ps1        Olfr1383
-## P3OMP33 12515.8433055288 3288.98907936719 627.618313508701 0.9611306485585
-##                   fifth
-## 1              Olfr1370
-## P3OMP33 0.9611306485585
+##                    first           second            third
+## 1               Olfr1195         Olfr1193     Olfr1372-ps1
+## P3OMP33 12515.8431917587 3288.98904946998 627.618307803594
+##                    fourth             fifth
+## 1                Olfr1383          Olfr1370
+## P3OMP33 0.961130639821737 0.961130639821737
 ```
 
 *Olfr1195* and *Olfr1193* are adjacent genes, on opposite strands. *Olfr1195* shows robust expression. Additional reads map uniquely to *Olfr1193*, including the coding sequence, but these do no support the annotated gene model. Instead, the data shows an additional isoform that spans both genes. Thus, it is likely that this cell expresses *Olfr1195* monogenically, and that some of its reads have been incorrectly assigned to *Olfr1195* due to lack of annotation of additional isoforms. If indeed a new isoform covers both genes, and is transcribed from the reverse strand, then only OLFR1195 would be translated; the splice data supports this. 
@@ -365,13 +365,13 @@ tmp[or.class[or.expr$second>45,2]=="protein_coding",1:2]
 
 ```
 ##            first     second
-## P3OMP2  81182.42  225.98529
-## P3OMP7  67784.54   79.44556
+## P3OMP2  81182.43  225.98531
+## P3OMP7  67784.55   79.44557
 ## P3OMP11 49401.91   47.98269
-## P3OMP19 80479.42  319.48424
+## P3OMP19 80479.43  319.48427
 ## P3OMP21 59303.92  153.90643
-## P3OMP31 78982.71  584.09473
-## P3OMP33 12515.84 3288.98908
+## P3OMP31 78982.72  584.09475
+## P3OMP33 12515.84 3288.98905
 ```
 
 In five of the seven, the second OR is adjacent to the top expressed gene, and often these are paralogues with high identity. This is suggestive of mismapping from the top to the second OR. 
@@ -429,12 +429,12 @@ rbind(or.names[or.expr$third>30 & or.class[,3]=="protein_coding",], or.expr[or.e
 ```
 
 ```
-##                    first           second            third
-## 1                 Olfr43          Olfr403          Olfr855
-## P3OMP19 80479.4204080011 319.484244749838 113.828218937816
-##                   fourth             fifth
-## 1            Olfr408-ps1          Olfr1508
-## P3OMP19 1.91307930987927 0.956539654939634
+##                    first          second            third           fourth
+## 1                 Olfr43         Olfr403          Olfr855      Olfr408-ps1
+## P3OMP19 80479.4275178413 319.48427297422 113.828228993809 1.91307947888754
+##                     fifth
+## 1                Olfr1508
+## P3OMP19 0.956539739443772
 ```
 
 We've already seen that second OR in this cell is product of mismapping, but the third OR shows good quality alignments. *Olfr855* is a distant paralogue of *Olfr43*, with only 42.49% identity between the two. These counts seem genuine.
@@ -513,13 +513,13 @@ sessionInfo()
 ```
 
 ```
-## R version 3.6.1 (2019-07-05)
+## R version 3.5.3 (2019-03-11)
 ## Platform: x86_64-apple-darwin15.6.0 (64-bit)
-## Running under: macOS High Sierra 10.13.6
+## Running under: OS X El Capitan 10.11.6
 ## 
 ## Matrix products: default
-## BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
-## LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
+## BLAS: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRblas.0.dylib
+## LAPACK: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRlapack.dylib
 ## 
 ## locale:
 ## [1] en_GB.UTF-8/en_GB.UTF-8/en_GB.UTF-8/C/en_GB.UTF-8/en_GB.UTF-8
@@ -530,47 +530,47 @@ sessionInfo()
 ## 
 ## other attached packages:
 ##  [1] gplots_3.0.1.1              RColorBrewer_1.1-2         
-##  [3] ggrepel_0.8.1               ggpubr_0.2.2               
-##  [5] magrittr_1.5                scater_1.12.2              
-##  [7] ggplot2_3.2.1               scran_1.12.1               
-##  [9] SingleCellExperiment_1.6.0  SummarizedExperiment_1.14.1
-## [11] DelayedArray_0.10.0         BiocParallel_1.18.1        
-## [13] matrixStats_0.54.0          Biobase_2.44.0             
-## [15] GenomicRanges_1.36.0        GenomeInfoDb_1.20.0        
-## [17] IRanges_2.18.1              S4Vectors_0.22.0           
-## [19] BiocGenerics_0.30.0        
+##  [3] ggrepel_0.8.0               ggpubr_0.2                 
+##  [5] magrittr_1.5                scater_1.10.1              
+##  [7] ggplot2_3.1.0               scran_1.10.2               
+##  [9] SingleCellExperiment_1.4.1  SummarizedExperiment_1.12.0
+## [11] DelayedArray_0.8.0          matrixStats_0.54.0         
+## [13] Biobase_2.42.0              GenomicRanges_1.34.0       
+## [15] GenomeInfoDb_1.18.2         IRanges_2.16.0             
+## [17] S4Vectors_0.20.1            BiocGenerics_0.28.0        
+## [19] BiocParallel_1.16.6        
 ## 
 ## loaded via a namespace (and not attached):
 ##  [1] viridis_0.5.1            dynamicTreeCut_1.63-1   
-##  [3] edgeR_3.26.7             BiocSingular_1.0.0      
-##  [5] viridisLite_0.3.0        DelayedMatrixStats_1.6.0
-##  [7] gtools_3.8.1             assertthat_0.2.1        
-##  [9] statmod_1.4.32           dqrng_0.2.1             
-## [11] GenomeInfoDbData_1.2.1   vipor_0.4.5             
-## [13] yaml_2.2.0               pillar_1.4.2            
-## [15] lattice_0.20-38          glue_1.3.1              
-## [17] limma_3.40.6             digest_0.6.20           
-## [19] XVector_0.24.0           ggsignif_0.6.0          
-## [21] colorspace_1.4-1         cowplot_1.0.0           
-## [23] htmltools_0.3.6          Matrix_1.2-17           
-## [25] pkgconfig_2.0.2          zlibbioc_1.30.0         
-## [27] purrr_0.3.2              scales_1.0.0            
-## [29] gdata_2.18.0             tibble_2.1.3            
-## [31] withr_2.1.2              lazyeval_0.2.2          
-## [33] crayon_1.3.4             evaluate_0.14           
-## [35] beeswarm_0.2.3           tools_3.6.1             
-## [37] stringr_1.4.0            munsell_0.5.0           
-## [39] locfit_1.5-9.1           irlba_2.3.3             
-## [41] compiler_3.6.1           rsvd_1.0.2              
-## [43] caTools_1.17.1.2         rlang_0.4.0             
-## [45] grid_3.6.1               RCurl_1.95-4.12         
-## [47] BiocNeighbors_1.2.0      igraph_1.2.4.1          
-## [49] labeling_0.3             bitops_1.0-6            
-## [51] rmarkdown_1.15           gtable_0.3.0            
+##  [3] edgeR_3.24.3             viridisLite_0.3.0       
+##  [5] DelayedMatrixStats_1.4.0 gtools_3.8.1            
+##  [7] assertthat_0.2.0         statmod_1.4.30          
+##  [9] GenomeInfoDbData_1.2.0   vipor_0.4.5             
+## [11] yaml_2.2.0               pillar_1.3.1            
+## [13] lattice_0.20-38          glue_1.3.0              
+## [15] limma_3.38.3             digest_0.6.18           
+## [17] XVector_0.22.0           colorspace_1.4-0        
+## [19] cowplot_0.9.4            htmltools_0.3.6         
+## [21] Matrix_1.2-15            plyr_1.8.4              
+## [23] pkgconfig_2.0.2          zlibbioc_1.28.0         
+## [25] purrr_0.3.1              scales_1.0.0            
+## [27] gdata_2.18.0             HDF5Array_1.10.1        
+## [29] tibble_2.0.1             withr_2.1.2             
+## [31] lazyeval_0.2.1           crayon_1.3.4            
+## [33] evaluate_0.13            beeswarm_0.2.3          
+## [35] tools_3.5.3              stringr_1.4.0           
+## [37] Rhdf5lib_1.4.2           munsell_0.5.0           
+## [39] locfit_1.5-9.1           compiler_3.5.3          
+## [41] caTools_1.17.1.2         rlang_0.3.1             
+## [43] rhdf5_2.26.2             grid_3.5.3              
+## [45] RCurl_1.95-4.12          BiocNeighbors_1.0.0     
+## [47] igraph_1.2.4             labeling_0.3            
+## [49] bitops_1.0-6             rmarkdown_1.12          
+## [51] gtable_0.2.0             reshape2_1.4.3          
 ## [53] R6_2.4.0                 gridExtra_2.3           
-## [55] knitr_1.24               dplyr_0.8.3             
+## [55] knitr_1.22               dplyr_0.8.0.1           
 ## [57] KernSmooth_2.23-15       stringi_1.4.3           
-## [59] ggbeeswarm_0.6.0         Rcpp_1.0.2              
-## [61] tidyselect_0.2.5         xfun_0.8
+## [59] ggbeeswarm_0.6.0         Rcpp_1.0.0              
+## [61] tidyselect_0.2.5         xfun_0.5
 ```
 

@@ -22,7 +22,7 @@ library(ggrepel)
 library(RColorBrewer)
 library(gplots)
 
-dir <- "/Users/ibarra01/OneDrive - CRUK Cambridge Institute/github/ORgeneAnnotation_HAVANA/"
+dir <- "/Users/ibarra01/OneDrive/OneDrive - Cancer Research UK, Cambridge Institute/github/ORgeneAnnotation_HAVANA/"
 
 th <- theme_bw() + theme(axis.text.x = element_text(size=10), axis.title.x = element_text(size=12), axis.text.y = element_text(size=10), axis.title.y = element_text(size=12), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"), panel.border = element_blank(), plot.title = element_text(face="bold", hjust = 0.5, size=10))
 ```
@@ -31,7 +31,7 @@ Single-cell RNA-seq data from 34 single OSNs picked by hand from a GFP-OMP mouse
 
 Sequencing reads were mapped to the mouse genome `mm10` using `STAR version 2.6.0c` with gene quantification enabled, using `Ensembl version 93` annotation.
 
-The counts from each sample were compiled into a combined count matrix with the script `readGeneCounts.R`. These can be downloaded from ArrayExrpess.
+The counts from each sample were compiled into a combined count matrix with the script `readGeneCounts.R`. These can be downloaded from [ArrayExpress](https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-8285).
 
 ------
 
@@ -44,7 +44,7 @@ First, we load the count matrix and mapping statistics (parsed from the STAR `Lo
 data <- read.table(paste0(dir, "data/geneCounts_P3OMPcells.RAW.tsv"), stringsAsFactors = FALSE)
 
 ## mapping stats from STAR logs
-mapping.stats <- read.table(paste0(dir, "data/mappingStats.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
+mapping.stats <- read.table(paste0(dir, "data/mappingStats_singleCells.tsv"), stringsAsFactors = FALSE, header = TRUE, row.names = 1)
 
 ## separate gene annotation
 ann <- data[-c(1:4),1:6]
@@ -215,7 +215,7 @@ ggplot(as.data.frame(ranks), aes(1:length(ranks), ranks)) + geom_point() + xlab(
 These cells were sequenced on the HiSeq X Ten platform, which suffers from index switching. This leads to some reads from a given library being incorrectly assigned to other libraries that share one of the indices used for multiplexing. Below is a heatmap of all the OR genes detected, and the coloured bar at the top indicates one of the indices used for multiplexing. It is clear that among the libraries sharing the same index there is index switching, i.e., a small number of reads from the very highly expressed OR gene from each cell bleeding into the others cells with the same index.
 
 ```{r multiplexing, fig.width=5, fig.height=5}
-multiplexing <- read.table(paste0(dir, "data/indices.tsv"), header = TRUE, stringsAsFactors = FALSE)
+multiplexing <- read.table(paste0(dir, "data/indices_singleCells.tsv"), header = TRUE, stringsAsFactors = FALSE)
 multiplexing <- multiplexing[match(colnames(ors), multiplexing$cell),]
 
 heatmap.2(as.matrix(log10(ors+1)), trace="none", col=rev(brewer.pal(n=10, "RdYlBu")), Colv = FALSE, ColSideColors = as.character(factor(multiplexing$index2, labels = rainbow(n=3))), dendrogram = "row", key.title = "", key.xlab = "log10 conts")
