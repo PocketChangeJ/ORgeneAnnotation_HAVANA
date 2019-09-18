@@ -1,6 +1,6 @@
 ---
 title: "Human ytranscriptome analysis"
-date: '13 September, 2019'
+date: '18 September, 2019'
 output:
   html_document:
     keep_md: true
@@ -14,7 +14,7 @@ output:
 
 
 
-We have RNA-seq data from 9 human olfactory mucosa biopsies, plus three samples from Olender et al., BMC Genomics, 2016 (we only use the samples with paired-end data). The data was mapped with STAR and fragments in genes counted with HTSeq against the Ensembl annotation, version 95.
+We have RNA-seq data from 9 human olfactory mucosa biopsies (including the data from Saraiva et al., Sci Adv, 2019), plus three samples from Olender et al., BMC Genomics, 2016 (we only use the samples with paired-end data). The data was mapped with STAR and fragments in genes counted with HTSeq against the Ensembl annotation, version 95.
 
 
 ```r
@@ -182,9 +182,9 @@ tmp$type <- ifelse(ann[row.names(tmp),]$biotype == "protein_coding", "protein_co
 
 We bin the genes based on their length:
 
-* 0 -> x < 1000bp
+* 0 -> x < 1100bp
 
-* 1 -> 1000 < x < 2000
+* 1 -> 1100 < x < 2000
 
 * 2 -> 2000 < x < 3000
 
@@ -200,7 +200,7 @@ As expected, gens from bin 0 which only contain the CDS have the lowest expressi
 
 
 ```r
-tmp$bin <- as.factor(ifelse(tmp$length < 1000, 0, ifelse(tmp$length < 2000, 1, ifelse(tmp$length < 3000, 2, ifelse(tmp$length < 4000, 3, ifelse(tmp$length < 5000, 4, ifelse(tmp$length < 7500, 5, 6)))))))
+tmp$bin <- as.factor(ifelse(tmp$length < 1100, 0, ifelse(tmp$length < 2000, 1, ifelse(tmp$length < 3000, 2, ifelse(tmp$length < 4000, 3, ifelse(tmp$length < 5000, 4, ifelse(tmp$length < 7500, 5, 6)))))))
 
 data_summary <- function(x) {
    m <- mean(x)
@@ -254,9 +254,10 @@ As an aside, the mouse data is of much better quality and has higher coverage of
 ```r
 ## save the data from https://doi.org/10.7554/eLife.21476.006 as plain text file 'mouseORexpr_IbarraSoria2017.tab'
 ## using only the 6 B6 samples
+## annotation is Ensembl v72
 
 ## expr
-ors.mouse <- read.table(paste0(dir, "data/mouseORexpr_IbarraSoria2017.tab"), header = TRUE)
+ors.mouse <- read.table(paste0(dir, "data/mouseORexpr_IbarraSoria2017.tab"), header = TRUE, stringsAsFactors = FALSE)
 ors.mouse$mean <- apply(ors.mouse[,7:12], 1, mean)
 
 ## this data already includes a length entry, but this is considering old models, before any of the annotation from this study
@@ -264,6 +265,23 @@ ors.mouse$mean <- apply(ors.mouse[,7:12], 1, mean)
 length <- read.table(paste0(dir, "data/mouseOR_length.tsv"), header = TRUE)
 
 ## combine
+sel <- intersect(length$gene, ors.mouse$gene)
+# 1241 out of the 1249 are found
+# the remaining have changed name:
+# Olfr406-ps to Olfr406
+# Olfr1116-ps to Olfr1116
+# Olfr418-ps1 to Olfr418
+# Olfr1375-ps1 to Olfr1375
+# Olfr1433 to Olfr1434
+# Olfr179 to Olfr322
+# Olfr144 has been removed
+# amend the names so that we can match properly
+ors.mouse[ors.mouse$gene == "Olfr406-ps",]$gene <- "Olfr406"
+ors.mouse[ors.mouse$gene == "Olfr1116-ps",]$gene <- "Olfr1116"
+ors.mouse[ors.mouse$gene == "Olfr418-ps1",]$gene <- "Olfr418"
+ors.mouse[ors.mouse$gene == "Olfr1375-ps1",]$gene <- "Olfr1375"
+ors.mouse[ors.mouse$gene == "Olfr1433",]$gene <- "Olfr1434"
+ors.mouse[ors.mouse$gene == "Olfr179",]$gene <- "Olfr322"
 sel <- intersect(length$gene, ors.mouse$gene)
 tmp <- ors.mouse[ors.mouse$gene %in% sel,]
 tmp$length2 <- length[match(tmp$gene, length$gene),]$length 
@@ -278,7 +296,7 @@ And we observe the same, except in this case there is still a significant increa
 
 
 ```r
-tmp$bin <- as.factor(ifelse(tmp$length < 1000, 0, ifelse(tmp$length < 2000, 1, ifelse(tmp$length < 3000, 2, ifelse(tmp$length < 4000, 3, ifelse(tmp$length < 5000, 4, ifelse(tmp$length < 7500, 5, 6)))))))
+tmp$bin <- as.factor(ifelse(tmp$length < 1100, 0, ifelse(tmp$length < 2000, 1, ifelse(tmp$length < 3000, 2, ifelse(tmp$length < 4000, 3, ifelse(tmp$length < 5000, 4, ifelse(tmp$length < 7500, 5, 6)))))))
 
 ggplot(tmp, aes(bin, log10(meanNorm+1))) + geom_violin() + geom_jitter(shape=16, position=position_jitter(0.1), aes(colour=bin)) + xlab("gene length") + ylab("normalised counts per kilobase") + scale_colour_brewer(palette = "YlOrBr") + stat_summary(fun.data=data_summary, colour="darkgrey") + th + theme(legend.position = "none") 
 ```
@@ -318,7 +336,7 @@ ggplot(tmp2, aes(bin, log10(meanNorm+1))) + geom_violin() + geom_jitter(shape=16
 # wilcox.test(tmp2[tmp2$length<=3000,]$meanNorm, tmp2[tmp2$length>3000,]$meanNorm, alternative = "less") # p-value < 2.2e-16
 ```
 
-## Intron-split genes
+## Split OR genes
 
 We have identified a number of genes that encode a putatively functional protein across two exons. Are these expressed at the same levels as protein-coding genes or do they resemble more the expression pattern of pseudogenes?
 
@@ -338,7 +356,9 @@ plots <- list()
 plots[[1]] <- ggplot(orsNorm, aes(class, log10(mean+1))) + geom_boxplot() + ggtitle("human") + th
 
 ## mouse
-split.mouse <- c("Olfr104-ps","Olfr105-ps","Olfr106-ps","Olfr1116","Olfr1117-ps1","Olfr1118","Olfr1123","Olfr1174-ps","Olfr1175-ps","Olfr1177-ps","Olfr1183","Olfr1289","Olfr1291-ps","Olfr1293-ps","Olfr1331","Olfr1333","Olfr1358","Olfr239","Olfr240-ps1","Olfr286","Olfr287","Olfr288","Olfr324","Olfr55","Olfr560","Olfr592","Olfr607","Olfr680-ps1","Olfr682-ps1","Olfr718-ps1","Olfr735","Olfr745","Olfr764","Olfr766","Olfr844","Olfr857","Olfr869","Olfr872","Olfr873","Olfr18","Olfr94")
+# in the mouse data, Olfr1291-ps is Olfr1291-ps1
+# Olfr560 doesn't exist
+split.mouse <- c("Olfr104-ps","Olfr105-ps","Olfr106-ps","Olfr1116","Olfr1117-ps1","Olfr1118","Olfr1123","Olfr1174-ps","Olfr1175-ps","Olfr1177-ps","Olfr1183","Olfr1289","Olfr1291-ps1","Olfr1293-ps","Olfr1331","Olfr1333","Olfr1358","Olfr239","Olfr240-ps1","Olfr286","Olfr287","Olfr288","Olfr324","Olfr55","Olfr560","Olfr592","Olfr607","Olfr680-ps1","Olfr682-ps1","Olfr718-ps1","Olfr735","Olfr745","Olfr764","Olfr766","Olfr844","Olfr857","Olfr869","Olfr872","Olfr873","Olfr18","Olfr94")
 
 ors.mouse$type <- ifelse(length[match(ors.mouse$gene, length$gene),]$biotype == "gene", "protein_coding", "pseudogene")
 ors.mouse$class <- ifelse(ors.mouse$gene %in% split.mouse, "intron_split", ors.mouse$type)
