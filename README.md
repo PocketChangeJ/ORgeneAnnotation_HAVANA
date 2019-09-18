@@ -23,9 +23,9 @@ Additional files required:
 
 The markdown document `singleCell_splitORexpression` contains the code used to analyse the single-cell RNA-seq data from 34 manually picked OSNs, obtained from heterozygous OMP-GFP mice, at postnatal day 3.
 
-- It performs QC and normalisation.
+- Performs QC and normalisation.
 - Analyses the expression of OR genes in each cell, and investigates mismapping events.
-- Compares the two cells expressing split ORs to the rest that express intronless ORs.
+- Compares the two cells expressing split OR genes to the rest that express intronless OR genes.
 
 Data is available from ArrayExpress under accession number [E-MTAB-8285](https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-8285). The matrix of raw counts for all cells is provided as a processed file, and need to be downloaded to execute the `markdown` document.
 
