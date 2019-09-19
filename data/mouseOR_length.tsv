@@ -1268,7 +1268,11 @@ Olfr1004-ps1	580	pseudogene
 Olfr929-ps1	585	pseudogene
 Olfr1059-ps1	586	pseudogene
 RP23-2D7.20	587	pseudogene
+<<<<<<< HEAD
 RP23-308K11.1	592	pseudogene
+=======
+NA	592	pseudogene
+>>>>>>> 28e7c001f84cac9e6f6156fc5dd5654dd01755fd
 Olfr468-ps1	593	pseudogene
 Olfr1091-ps1	595	pseudogene
 Olfr274-ps1	595	pseudogene
